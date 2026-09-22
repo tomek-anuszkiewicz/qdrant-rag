@@ -1,0 +1,8 @@
+qdrant-client>=1.13.0
+google-genai>=1.0.0
+python-dotenv>=1.0.1
+pillow>=10.0.0
+rich>=13.0.0
+fastembed>=0.8.0
+# Optional for GPU acceleration (NVIDIA RTX with CUDA):
+# pip install onnxruntime-gpu

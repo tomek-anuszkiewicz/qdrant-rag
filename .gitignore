@@ -1,2 +1,4 @@
 qdrant_storage/
 amiga_rag_cache.json
+__pycache__/
+*.py[cod]
