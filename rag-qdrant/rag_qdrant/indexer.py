@@ -46,9 +46,16 @@ def _setup_cuda_dll_paths():
         for base in site_dirs:
             nv_dir = Path(base) / "nvidia"
             if nv_dir.is_dir():
-                for bin_dir in nv_dir.glob("*/bin"):
+                # NVIDIA's pip packages may put platform DLLs directly in a
+                # package bin directory or in a nested directory such as
+                # ``nvidia/cu13/bin/x86_64``. Windows DLL discovery is not
+                # recursive, so register both levels explicitly.
+                for bin_dir in nv_dir.glob("**/bin"):
                     if bin_dir.is_dir():
                         search_dirs.append(bin_dir)
+                        search_dirs.extend(
+                            child for child in bin_dir.iterdir() if child.is_dir()
+                        )
     except Exception:
         pass
 
