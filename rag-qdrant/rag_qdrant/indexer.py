@@ -15,13 +15,10 @@ from .config import (
     QDRANT_URL,
     COLLECTION_NAME,
     QDRANT_TIMEOUT,
-    CACHE_FILE,
     EMBEDDING_PROVIDER,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,
-    GEMINI_API_KEY,
     NUM_WORKERS,
-    VISION_MAX_WORKERS,
     GPU_EMBEDDING_BATCH_SIZE,
     CPU_EMBEDDING_BATCH_SIZE,
     DEFAULT_EMBEDDING_BATCH_SIZE,
@@ -31,8 +28,7 @@ from .config import (
 )
 from .chunker import MarkdownChunker
 from .cache import new_cache, normalize_cache
-from .discovery import discover_markdown_files, is_included_path
-from .vision import VisionAnalyzer
+from .discovery import discover_markdown_files
 
 
 def _setup_cuda_dll_paths():
@@ -74,12 +70,12 @@ _setup_cuda_dll_paths()
 
 
 class KnowledgeIndexer:
-    def __init__(self):
+    def __init__(self, index_json: Path):
         self.client = QdrantClient(url=QDRANT_URL, timeout=QDRANT_TIMEOUT)
         self.chunker = MarkdownChunker()
+        self.index_json = Path(index_json)
         self.cache, self.dirty_cache = self._load_cache()
         atexit.register(self.flush_cache)
-        self.vision = VisionAnalyzer(self.cache.setdefault("image_descriptions", {}))
         self.host_gpu = self.detect_host_gpu()
         self.fastembed_model = None
         self.active_provider = "CPU"
@@ -145,9 +141,9 @@ class KnowledgeIndexer:
             self.active_batch_size = CPU_EMBEDDING_BATCH_SIZE
 
     def _load_cache(self) -> Tuple[Dict[str, Any], bool]:
-        if CACHE_FILE.is_file():
+        if self.index_json.is_file():
             try:
-                with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                with open(self.index_json, "r", encoding="utf-8") as f:
                     return normalize_cache(json.load(f), COLLECTION_NAME)
             except Exception:
                 pass
@@ -156,8 +152,8 @@ class KnowledgeIndexer:
     def flush_cache(self):
         """Flushes dirty cache to disk (atomic checkpointing)."""
         if getattr(self, "dirty_cache", False):
-            CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            self.index_json.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.index_json, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, indent=2, ensure_ascii=False)
             self.dirty_cache = False
 
@@ -174,13 +170,13 @@ class KnowledgeIndexer:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
-    def ensure_collection(self, force_recreate: bool = False):
+    def ensure_collection(self):
         """Creates Qdrant collection if not already existing or reconciles dimension."""
         collections = [c.name for c in self.client.get_collections().collections]
         if COLLECTION_NAME in collections:
             info = self.client.get_collection(COLLECTION_NAME)
             current_dim = info.config.params.vectors.size
-            if current_dim != EMBEDDING_DIM and (force_recreate or info.points_count == 0):
+            if current_dim != EMBEDDING_DIM and info.points_count == 0:
                 # Recreate collection if dimension changed
                 self.client.delete_collection(COLLECTION_NAME)
                 collections.remove(COLLECTION_NAME)
@@ -237,21 +233,17 @@ class KnowledgeIndexer:
         self,
         directory: Path,
         source_name: str,
-        include_dirs: List[str],
-        force: bool = False,
         progress_cb=None,
         plan_cb=None
     ) -> Dict[str, Any]:
-        """Indexes Markdown files below selected directories and their referenced images."""
-        if not include_dirs:
-            raise ValueError("include_dirs must contain at least one top-level directory pattern")
+        """Indexes every eligible Markdown file below a directory and its referenced images."""
 
-        self.ensure_collection(force_recreate=force)
+        self.ensure_collection()
         dir_path = directory.resolve()
         source_name = source_name.strip().lower()
         source_cache = self.cache.setdefault("sources", {}).setdefault(source_name, {})
 
-        md_files = discover_markdown_files(dir_path, include_dirs)
+        md_files = discover_markdown_files(dir_path)
 
         active_paths = {str(p.resolve()) for p in md_files}
 
@@ -262,7 +254,6 @@ class KnowledgeIndexer:
             "skipped": 0,
             "deleted": 0,
             "total_points": 0,
-            "images_analyzed": 0
         }
 
         # 1. Clean up files deleted on disk from Qdrant and cache (only prune under dir_path)
@@ -275,9 +266,7 @@ class KnowledgeIndexer:
                 is_under_dir = str(old_p).startswith(str(dir_path))
 
             if (
-                is_under_dir
-                and is_included_path(old_p, dir_path, include_dirs)
-                and old_path not in active_paths
+                is_under_dir and old_path not in active_paths
             ):
                 self.delete_file_points(old_path)
                 del source_cache[old_path]
@@ -293,7 +282,7 @@ class KnowledgeIndexer:
             h = self._file_hash(file_p)
             size = file_p.stat().st_size
             cached_entry = source_cache.get(p_str)
-            needs_idx = force or (cached_entry is None) or (cached_entry.get("hash") != h)
+            needs_idx = (cached_entry is None) or (cached_entry.get("hash") != h)
             is_upd = cached_entry is not None and needs_idx
             return file_p, p_str, h, needs_idx, is_upd, size
 
@@ -338,7 +327,6 @@ class KnowledgeIndexer:
                 "skipped_files": stats["skipped"],
                 "skipped_bytes": total_skipped_bytes,
                 "cpu_workers": NUM_WORKERS,
-                "vision_workers": VISION_MAX_WORKERS,
             })
 
         if not files_to_index:
@@ -349,7 +337,6 @@ class KnowledgeIndexer:
 
         # 3. Parallel markdown chunking across CPU workers
         chunked_results = []
-        all_referenced_images = set()
 
         def _chunk_worker(item):
             file_p, p_str, h, is_upd, size = item
@@ -368,8 +355,6 @@ class KnowledgeIndexer:
                     chunked_count += 1
                     processed_bytes += size
                     chunked_results.append((file_p, p_str, h, is_upd, chunks))
-                    for ch in chunks:
-                        all_referenced_images.update(ch.get("images", []))
                     if progress_cb:
                         count_tag = f"({chunked_count:>{chunk_digits}}/{total_to_chunk})"
                         progress_cb(processed_bytes, total_to_index_bytes, file_p.name, "chunked", True, count_tag)
@@ -377,24 +362,7 @@ class KnowledgeIndexer:
                 executor.shutdown(wait=False, cancel_futures=True)
                 raise
 
-        # 4. Parallel Vision Analysis for referenced diagrams/images
-        if all_referenced_images and self.vision.available:
-            total_images = len(all_referenced_images)
-            v_digits = len(str(total_images))
-            def _vision_progress(completed, total, name):
-                if progress_cb:
-                    count_tag = f"({completed:>{v_digits}}/{total})"
-                    progress_cb(completed, total, name, "vision", False, count_tag)
-
-            self.vision.analyze_images_parallel(
-                list(all_referenced_images),
-                max_workers=VISION_MAX_WORKERS,
-                progress_cb=_vision_progress
-            )
-            stats["images_analyzed"] = len(self.cache.get("image_descriptions", {}))
-            self._save_cache()
-
-        # 5. High-Throughput Batched Embedding, Bulk Upserting & Deferred Cache Flushing
+        # 4. High-Throughput Batched Embedding, Bulk Upserting & Deferred Cache Flushing
         total_chunks_to_index = sum(len(chunks) for _, _, _, _, chunks in chunked_results)
         total_files_to_index = len(chunked_results)
         completed_chunks = 0
@@ -435,16 +403,7 @@ class KnowledgeIndexer:
             file_points_accum[p_str] = 0
 
             for chunk in chunks:
-                chunk_text = chunk["content"]
-                img_desc_list = []
-                for img_p in chunk.get("images", []):
-                    desc = self.vision.analyze_image(img_p)
-                    if desc:
-                        img_desc_list.append(f"Image [{Path(img_p).name}]: {desc}")
-
-                full_embed_text = chunk_text
-                if img_desc_list:
-                    full_embed_text += "\n\n[Associated Diagrams & OCR]:\n" + "\n".join(img_desc_list)
+                full_embed_text = chunk["content"]
 
                 point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{source_name}:{chunk['chunk_id']}"))
                 payload = {

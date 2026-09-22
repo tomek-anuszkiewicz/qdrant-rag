@@ -13,85 +13,91 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-import logging
-import warnings
-logging.getLogger("google_genai").setLevel(logging.ERROR)
 try:
-    from google.genai.models import Models, AsyncModels
-    Models._logged_afc_warning = True
-    AsyncModels._logged_afc_warning = True
-except Exception:
-    pass
-
-warnings.filterwarnings("ignore", message=".*automatic function calling.*")
-warnings.filterwarnings("ignore", category=UserWarning, module=".*genai.*")
-
-try:
-    from .config import QDRANT_URL, COLLECTION_NAME, CACHE_FILE, NUM_WORKERS, VISION_MAX_WORKERS
+    from .config import QDRANT_URL, COLLECTION_NAME, NUM_WORKERS
     from .arguments import create_parser, create_search_parser, validate_indexing_arguments
     from .indexer import KnowledgeIndexer
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from rag_qdrant.config import QDRANT_URL, COLLECTION_NAME, CACHE_FILE, NUM_WORKERS, VISION_MAX_WORKERS
+    from rag_qdrant.config import QDRANT_URL, COLLECTION_NAME, NUM_WORKERS
     from rag_qdrant.arguments import create_parser, create_search_parser, validate_indexing_arguments
     from rag_qdrant.indexer import KnowledgeIndexer
 
 
 HELP_TEXT = """
-[bold cyan]rag_qdrant[/bold cyan] - Multi-Source Local RAG Indexer (Qdrant)
+rag_qdrant — lokalny, przyrostowy indeksator Markdown dla Qdrant
 
-[bold yellow]USAGE:[/bold yellow]
-  rag_qdrant PATH --source NAME --include-dirs DIRS [OPTIONS]
-  rag_qdrant --status | --list-sources
-  rag_qdrant search QUERY [--source NAME] [--limit COUNT] --json
+CEL
+  Indeksuje dokumenty Markdown do kolekcji Qdrant `projects_docs` i wykonuje
+  wyszukiwanie semantyczne. Wektory są zapisywane w Qdrant pod
+  http://localhost:6333. Plik wskazany przez --index-json przechowuje wyłącznie
+  lokalny stan: hashe plików, liczbę fragmentów i źródła.
 
-[bold yellow]ARGUMENTS:[/bold yellow]
-  [green]PATH[/green]                   Directory to index (e.g. [bold].[/bold] for current folder, or [bold]<PATH>[/bold])
+WYMAGANIA
+  - Qdrant musi działać pod http://localhost:6333.
+  - Zainstaluj zależności z requirements.txt.
+  - --index-json jest wymagany dla każdego polecenia poza --help. Ten sam plik
+    JSON należy przekazywać we wszystkich przebiegach obsługujących tę kolekcję.
+    Plik może jeszcze nie istnieć; zostanie utworzony przy pierwszym zapisie.
 
-[bold yellow]OPTIONS:[/bold yellow]
-  [green]-s, --source NAME[/green]      [bold red][REQUIRED][/bold red] Tag for the indexed source (e.g. 'project-a', 'engineering-notes').
-  [green]--include-dirs DIRS[/green]    [bold red][REQUIRED FOR INDEXING][/bold red] Top-level directories to index (e.g. '01*' '02*').
-  [green]-l, --list-sources[/green]     Display a table of all indexed sources with file & vector counts.
-  [green]--status[/green]               Check Qdrant database connectivity and total collection size.
-  [green]--json[/green]                 Emit machine-readable JSON for status or source listing.
-  [green]--reindex[/green]              Force re-indexing of all files (ignores SHA256 cache).
-  [green]-h, --help[/green]             Show this help message and exit.
+SKŁADNIA
+  rag_qdrant PATH --source NAZWA --index-json PLIK
+  rag_qdrant --status --index-json PLIK [--json]
+  rag_qdrant --list-sources --index-json PLIK [--json]
+  rag_qdrant search ZAPYTANIE --index-json PLIK [--source TAGI] [--limit N] --json
 
-[bold yellow]EXAMPLES:[/bold yellow]
-  rag_qdrant <PATH_TO_DOCUMENTS> --source project-a --include-dirs "docs" "design"
-  rag_qdrant <PATH_TO_NOTES> --source engineering-notes --include-dirs "01*" "02*"
-  rag_qdrant --list-sources
-  rag_qdrant --status
-  rag_qdrant search "DMA arbitration" --source project-a --json
+INDEKSOWANIE
+  PATH                    Wymagany katalog główny dokumentów.
+  -s, --source NAZWA      Wymagany tag źródła, np. project-a. Jest normalizowany
+                          do małych liter i służy do filtrowania wyszukiwania.
+  --index-json PLIK       Wymagany plik JSON stanu indeksu.
+
+  Skanowane są wszystkie pliki .md w PATH — także w katalogu głównym oraz we
+  wszystkich podkatalogach. Pomijane są tylko katalogi techniczne/prywatne,
+  m.in. .git, .obsidian, .venv, node_modules, __pycache__ i nazwy z `private`.
+
+  Każdy znaleziony plik jest ponownie haszowany SHA-256 przy każdym przebiegu:
+  - nowy plik: jest dzielony na fragmenty, wektory są dodawane do Qdrant;
+  - zmieniony hash: stare punkty pliku są usuwane, potem zapisywane są nowe;
+  - identyczny hash: plik jest pomijany — nie tworzy fragmentów ani embeddingów;
+  - plik usunięty z bieżącego PATH: jego punkty i wpis JSON są usuwane.
+  Nie ma trybu pełnego wymuszonego reindeksowania.
+
+OBRAZY
+  Obrazy nie są analizowane, opisywane, odczytywane z sidecarów ani przekazywane
+  do usług chmurowych. Ich ścieżki mogą pozostać metadanymi fragmentu Markdown,
+  ale tekst obrazu nie wpływa na embedding ani wynik wyszukiwania.
+
+ODCZYT STANU
+  --status                Sprawdza Qdrant i pokazuje stan kolekcji. Bez --json
+                          pokazuje również tabelę źródeł.
+  -l, --list-sources      Pokazuje dane źródeł z --index-json: tag, liczbę
+                          plików, fragmentów i czas ostatniego indeksowania.
+  --json                  Dla --status i --list-sources zwraca odpowiedź JSON.
+                          W głównym trybie nie używaj go z indeksowaniem.
+
+WYSZUKIWANIE
+  search ZAPYTANIE        Wymagane zapytanie semantyczne.
+  -s, --source TAGI       Opcjonalny tag lub tagi rozdzielone przecinkami.
+                          Bez niego przeszukiwana jest cała kolekcja.
+  --limit N               Maksymalna liczba wyników; domyślnie 5, minimum 1.
+  --json                  Wymagany. Zwraca tablicę wyników z score, source,
+                          file_path, relative_path, header, content i images.
+                          Wyniki o score niższym niż 0.50 nie są zwracane.
+
+PRZYKŁADY
+  rag_qdrant D:\\Docs\\Projekt --source project-a --index-json D:\\AI\\qdrant\\rag-index.json
+  rag_qdrant --status --index-json D:\\AI\\qdrant\\rag-index.json --json
+  rag_qdrant --list-sources --index-json D:\\AI\\qdrant\\rag-index.json --json
+  rag_qdrant search "DMA arbitration" --source project-a,notes --limit 10 --index-json D:\\AI\\qdrant\\rag-index.json --json
+
+AUTOMATYZACJA
+  Agent powinien używać --json dla statusu, listy źródeł i wyszukiwania oraz
+  parsować stdout jako JSON. Indeksowanie jest interaktywne i wypisuje postęp
+  tekstowy; po powodzeniu jego zmiany są trwałe w Qdrant i --index-json.
 """
 
-PLAIN_HELP_TEXT = """
-rag_qdrant - Multi-Source Local RAG Indexer (Qdrant)
-
-USAGE:
-  rag_qdrant PATH --source NAME --include-dirs DIRS [OPTIONS]
-  rag_qdrant --status | --list-sources
-  rag_qdrant search QUERY [--source NAME] [--limit COUNT] --json
-
-ARGUMENTS:
-  PATH                   Directory to index (e.g. '.' for current folder, or <PATH>)
-
-OPTIONS:
-  -s, --source NAME      [REQUIRED] Tag for the indexed source (e.g. 'project-a', 'engineering-notes').
-  --include-dirs DIRS    [REQUIRED FOR INDEXING] Top-level directories to index (e.g. '01*' '02*').
-  -l, --list-sources     Display a table of all indexed sources with file & vector counts.
-  --status               Check Qdrant database connectivity and total collection size.
-  --json                 Emit machine-readable JSON for status or source listing.
-  --reindex              Force re-indexing of all files (ignores SHA256 cache).
-  -h, --help             Show this help message and exit.
-
-EXAMPLES:
-  rag_qdrant <PATH_TO_DOCUMENTS> --source project-a --include-dirs "docs" "design"
-  rag_qdrant <PATH_TO_NOTES> --source engineering-notes --include-dirs "01*" "02*"
-  rag_qdrant --list-sources
-  rag_qdrant --status
-  rag_qdrant search "DMA arbitration" --source project-a --json
-"""
+PLAIN_HELP_TEXT = HELP_TEXT
 
 
 def format_bytes(bytes_val: int) -> str:
@@ -193,13 +199,13 @@ def show_status(indexer: KnowledgeIndexer):
         print(f"[Status Error] Failed to connect to Qdrant at {QDRANT_URL}: {e}")
 
 
-def create_indexer(json_output: bool = False) -> KnowledgeIndexer:
+def create_indexer(index_json: Path, json_output: bool = False) -> KnowledgeIndexer:
     """Initialize the indexer without contaminating a JSON command response."""
     if not json_output:
-        return KnowledgeIndexer()
+        return KnowledgeIndexer(index_json)
 
     with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-        return KnowledgeIndexer()
+        return KnowledgeIndexer(index_json)
 
 
 def get_status_payload(indexer: KnowledgeIndexer) -> dict:
@@ -228,12 +234,15 @@ def main_search(argv) -> int:
     if not args.json:
         print_json({"error": "The search command requires --json."})
         return 1
+    if not args.index_json:
+        print_json({"error": "The --index-json option is required and must name the JSON index file."})
+        return 1
     if args.limit < 1:
         print_json({"error": "--limit must be at least 1."})
         return 1
 
     try:
-        indexer = create_indexer(json_output=True)
+        indexer = create_indexer(Path(args.index_json).expanduser().resolve(), json_output=True)
         results = indexer.search(query=args.query, sources=args.source, limit=args.limit)
     except Exception as error:
         print_json({"error": str(error)})
@@ -267,6 +276,16 @@ def main():
         print_json({"error": "--json is supported only with --status, --list-sources, or search."})
         return 1
 
+    if not args.index_json:
+        error = "The --index-json option is required and must name the JSON index file."
+        if args.json:
+            print_json({"error": error})
+        else:
+            print(f"[Error] {error}")
+            print_help()
+        return 1
+    index_json = Path(args.index_json).expanduser().resolve()
+
     # Clean path string from accidental trailing quotes or slashes
     target_path_str = args.path
     if target_path_str:
@@ -286,7 +305,7 @@ def main():
         sys.exit(1)
 
     try:
-        indexer = create_indexer(json_output=args.json)
+        indexer = create_indexer(index_json, json_output=args.json)
     except Exception as e:
         if args.json:
             print_json({"error": str(e)})
@@ -326,7 +345,7 @@ def main():
     if indexing_error:
         print(
             f"\n[Error] {indexing_error} "
-            "Example: rag_qdrant <PATH> --source project-a --include-dirs \"docs\"\n"
+            "Example: rag_qdrant <PATH> --source project-a --index-json D:\\rag-index.json\n"
         )
         sys.exit(1)
     source_name = args.source.strip().lower()
@@ -340,15 +359,12 @@ def main():
         console.print(f"[bold cyan]─── RAG Indexing Configuration ──────────────────────────[/bold cyan]")
         console.print(f"  • Target Directory:       [bold]{target_dir}[/bold]")
         console.print(f"  • Source Tag:             [bold green]{source_name}[/bold green]")
-        if args.include_dirs:
-            console.print(f"  • Included Subdirs:       [bold green]{', '.join(args.include_dirs)}[/bold green]")
         console.print(f"  • Qdrant URL:             {QDRANT_URL}")
         console.print(f"  • Qdrant Collection:      [bold]{COLLECTION_NAME}[/bold]")
-        console.print(f"  • Hash Cache File:        [bold magenta]{CACHE_FILE}[/bold magenta]")
+        console.print(f"  • Index JSON File:        [bold magenta]{index_json}[/bold magenta]")
         provider_style = "bold green" if indexer.active_provider == "CUDA" else "bold yellow"
         console.print(f"  • Embedder Engine:        [{provider_style}]{indexer.active_provider}[/{provider_style}] (Batch Size: {indexer.active_batch_size})")
         console.print(f"  • Hashing & Chunks:       [bold yellow]{NUM_WORKERS} CPU threads[/bold yellow]")
-        console.print(f"  • Diagram Vision:         [bold green]Offline Sidecar Loader (<image>.txt)[/bold green]")
         console.print(f"[bold cyan]──────────────────────────────────────────────────────────[/bold cyan]\n")
 
         if indexer.active_provider != "CUDA":
@@ -363,15 +379,8 @@ def main():
             else:
                 advisory_lines.append(f"  [bold yellow]No discrete NVIDIA GPU detected.[/bold yellow] Running on multi-core CPU ({NUM_WORKERS} threads).")
 
-            advisory_lines.append("")
-            advisory_lines.append(f"  [bold magenta]Cloud API Alternative:[/bold magenta]")
-            advisory_lines.append(f"    Have high API token quotas? Cloud embeddings can be enabled via GEMINI_API_KEY in .env.")
-
             console.print(Panel("\n".join(advisory_lines), title="[bold yellow]💡 Compute Acceleration Advisory[/bold yellow]", border_style="yellow"))
             console.print()
-
-        if args.reindex:
-            console.print("[yellow]Forced re-indexing enabled (cache ignored).[/yellow]\n")
 
         print_collection_stats(indexer, "Initial Qdrant Collection State")
 
@@ -430,8 +439,6 @@ def main():
             stats = indexer.index_directory(
                 directory=target_dir,
                 source_name=source_name,
-                force=args.reindex,
-                include_dirs=args.include_dirs,
                 progress_cb=progress_callback,
                 plan_cb=plan_callback
             )
@@ -445,8 +452,6 @@ def main():
         console.print(f"  • Skipped (unchanged):   {stats['skipped']}")
         console.print(f"  • Deleted from Qdrant:   {stats['deleted']}")
         console.print(f"  • Total Vectors Added:   {stats['total_points']}")
-        if stats["images_analyzed"] > 0:
-            console.print(f"  • Diagrams/OCR Analyzed: {stats['images_analyzed']}")
         console.print()
         sys.stdout.flush()
 
