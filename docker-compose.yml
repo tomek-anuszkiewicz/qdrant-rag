@@ -1,0 +1,14 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: amiga-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage:z
+    deploy:
+      resources:
+        limits:
+          memory: 2G
