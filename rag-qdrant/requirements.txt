@@ -1,5 +1,10 @@
 qdrant-client>=1.13.0
 rich>=13.0.0
 fastembed>=0.8.0
+starlette>=0.30.0
+uvicorn>=0.20.0
+fastmcp>=0.1.0
+httpx>=0.24.0
+python-dotenv>=1.0.0
 # Optional for GPU acceleration (NVIDIA RTX with CUDA):
 # pip install onnxruntime-gpu

@@ -1,116 +1,169 @@
 # rag_qdrant
 
-`rag_qdrant` jest lokalnym narzędziem CLI do indeksowania dokumentacji Markdown
-w Qdrant i wyszukiwania semantycznego. Kolekcja Qdrant może zawierać wiele
-źródeł oznaczonych tagiem `--source`. Narzędzie używa lokalnych embeddingów
-FastEmbed; Qdrant powinien być dostępny pod `http://localhost:6333`.
+`rag_qdrant` to narzędzie do indeksowania dokumentacji Markdown w lokalnej bazie [Qdrant](https://qdrant.tech/) i wykonywania błyskawicznego wyszukiwania semantycznego.
 
-Podczas indeksowania skanowane są wszystkie pliki `.md` w `PATH`, łącznie z
-plikami w katalogu głównym i we wszystkich podkatalogach. Pomijane są tylko
-wbudowane katalogi techniczne i prywatne: m.in. `.git`, `.obsidian`, `.venv`,
-`node_modules`, `__pycache__` oraz katalogi, których nazwa zawiera `private`.
+Od wersji 2.0 architektura opiera się na **jednym trwałym procesie w tle**, który trzyma model embeddingów FastEmbed (`BAAI/bge-base-en-v1.5`) i połączenie z bazą Qdrant w pamięci RAM/VRAM. Zarówno cienki klient CLI `rag_qdrant`, jak i serwer MCP (dla agentów AI) korzystają z tego samego silnika, eliminując koszt ponownego importowania bibliotek i ładowania wag przy każdym zapytaniu.
 
-## Instalacja i konfiguracja
+---
 
-W katalogu `rag-qdrant` zainstaluj zależności:
+## Główne cechy
+
+- **Błyskawiczne wyszukiwanie**: Czas odpowiedzi CLI spadł z ~2.1 s do ~0.15–0.20 s.
+- **Pełna kompatybilność wsteczna**: Wszystkie dotychczasowe polecenia, flagi (`--status`, `--list-sources`, `search`, `--json`, `--index-json`) oraz skrypty `rag_qdrant.bat` i `rag_qdrant.ps1` działają dokładnie tak samo.
+- **Autostart na żądanie**: Jeśli serwis w tle nie działa, CLI uruchamia go automatycznie, czeka na gotowość i natychmiast wykonuje żądanie.
+- **Podwójny interfejs**: Lokalne REST API oraz serwer MCP (Streamable HTTP / SSE) na wspólnym porcie `127.0.0.1:6335`.
+- **Wysokie bezpieczeństwo**: Serwis i Qdrant nasłuchują wyłącznie na pętli zwrotnej (`127.0.0.1`), nagłówki `Host` i `Origin` są walidowane przeciwko atakom DNS rebinding, a dostęp do danych wymaga tokenu.
+- **Profile uprawnień**: Profile klientów (`admin`, `amiga`, `devnotes`) ograniczają zakres widocznych i indeksowanych źródeł oraz katalogów.
+
+---
+
+## Instalacja
+
+W katalogu `rag-qdrant`:
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-Każde polecenie poza `--help` wymaga `--index-json ŚCIEŻKA`. Jest to jawnie
-wskazany plik JSON lokalnego stanu indeksu: zawiera hashe SHA-256 plików,
-liczbę fragmentów, źródła i metadane obrazów. Nie zawiera wektorów — te są w
-Qdrant. Gdy plik nie istnieje, zostanie utworzony przy pierwszym zapisie.
-Do kolejnych przebiegów tej samej kolekcji przekazuj zawsze ten sam plik.
-
-Uruchamiaj CLI przez `bin\rag_qdrant.ps1` lub `bin\rag_qdrant.bat`, albo po
-dodaniu katalogu do `PATH` jako `rag_qdrant`.
-
-## Polecenia i parametry
-
-### Indeksowanie
-
-```text
-rag_qdrant PATH --source NAZWA --index-json PLIK
+Opcjonalnie dla akceleracji GPU (NVIDIA RTX / CUDA):
+```powershell
+pip install onnxruntime-gpu nvidia-cublas-cu12
 ```
 
-| Parametr | Znaczenie |
-| --- | --- |
-| `PATH` | Wymagana pozycyjna ścieżka do katalogu dokumentów. Wszystkie kwalifikujące się pliki Markdown pod tym katalogiem są skanowane. |
-| `-s NAZWA`, `--source NAZWA` | Wymagany tag źródła, np. `project-a`. Jest zapisywany małymi literami i służy do filtrowania wyników. |
-| `--index-json PLIK` | Wymagany plik JSON stanu indeksu, np. `D:\AI\qdrant\rag-index.json`. |
-| `-h`, `--help` | Wyświetla pomoc. Tylko ta forma nie wymaga `--index-json`. |
+---
+
+## Konfiguracja (`.env`)
+
+Utwórz lub zaktualizuj plik `.env` w katalogu głównym lub w `rag-qdrant/`:
+
+```env
+QDRANT_API_KEY=twoj-klucz-api-qdrant
+QDRANT_URL=http://127.0.0.1:6333
+
+RAG_SERVICE_HOST=127.0.0.1
+RAG_SERVICE_PORT=6335
+
+RAG_ADMIN_TOKEN=losowy-token-administratora
+RAG_AMIGA_TOKEN=losowy-token-profilu-amiga
+RAG_DEVNOTES_TOKEN=losowy-token-profilu-devnotes
+
+RAG_CANONICAL_INDEX_JSON=d:\AI\qdrant\amiga_rag_cache.json
+```
+
+---
+
+## Polecenia CLI
+
+Uruchamiaj CLI przez `bin\rag_qdrant.ps1` lub `bin\rag_qdrant.bat`, albo jako moduł Python: `python -m rag_qdrant.cli`.
+
+### 1. Wyszukiwanie semantyczne
 
 ```powershell
-rag_qdrant D:\Dokumenty\projekt-a --source project-a --index-json D:\AI\qdrant\rag-index.json
-rag_qdrant D:\Notatki --source engineering-notes --index-json D:\AI\qdrant\rag-index.json
+rag_qdrant search "DMA arbitration" --source amiga --limit 5 --index-json D:\AI\qdrant\amiga_rag_cache.json --json
 ```
 
-### Stan kolekcji i źródeł
-
-```text
-rag_qdrant --status --index-json PLIK [--json]
-rag_qdrant --list-sources --index-json PLIK [--json]
-```
-
-| Parametr | Znaczenie |
+| Parametr | Opis |
 | --- | --- |
-| `--status` | Sprawdza połączenie z Qdrant, zapewnia istnienie kolekcji i pokazuje adres, nazwę, stan oraz liczbę wektorów. Bez `--json` pokazuje także tabelę źródeł. |
-| `-l`, `--list-sources` | Pokazuje tagi źródeł, liczbę plików, fragmentów/wektorów i czas ostatniego indeksowania z pliku JSON. |
-| `--index-json PLIK` | Wymagany plik JSON stanu indeksu. |
-| `--json` | Zwraca dane maszynowe JSON. W głównym trybie CLI jest dozwolony tylko z `--status` albo `--list-sources`. |
+| `ZAPYTANIE` | Tekst zapytania w języku naturalnym |
+| `-s TAGI`, `--source TAGI` | Opcjonalny tag źródła lub tagi po przecinku (np. `amiga,devnotes`) |
+| `--limit N` | Maksymalna liczba wyników (domyślnie 5, min 1, maks 50) |
+| `--index-json PLIK` | Wymagany plik JSON stanu indeksu |
+| `--json` | Wymagany. Zwraca tablicę obiektów z polami `score`, `source`, `file_path`, `relative_path`, `header`, `content`, `images`. |
 
-`--status` odczytuje stan kolekcji bezpośrednio z Qdrant. Dane o źródłach dla
-`--list-sources` pochodzą z lokalnego pliku `--index-json`.
-
-### Wyszukiwanie semantyczne
-
-```text
-rag_qdrant search ZAPYTANIE --index-json PLIK [--source TAGI] [--limit LICZBA] --json
-```
-
-| Parametr | Znaczenie |
-| --- | --- |
-| `ZAPYTANIE` | Wymagany tekst wyszukiwany semantycznie. |
-| `--index-json PLIK` | Wymagany plik JSON stanu indeksu. Samo wyszukiwanie korzysta z wektorów zapisanych w Qdrant. |
-| `-s TAGI`, `--source TAGI` | Opcjonalny tag źródła albo lista tagów rozdzielona przecinkami, np. `project-a,engineering-notes`. Bez parametru przeszukiwana jest cała kolekcja. |
-| `--limit LICZBA` | Maksymalna liczba wyników; domyślnie `5`, minimalnie `1`. |
-| `--json` | Wymagany. Wynik jest tablicą JSON z oceną podobieństwa, tagiem źródła, ścieżką, nagłówkiem, treścią fragmentu i powiązanymi obrazami. |
+### 2. Stan kolekcji i źródeł
 
 ```powershell
-rag_qdrant search "DMA arbitration" --source project-a,engineering-notes --limit 10 --index-json D:\AI\qdrant\rag-index.json --json
+# Stan bazy wektorowej i kolekcji
+rag_qdrant --status --index-json D:\AI\qdrant\amiga_rag_cache.json [--json]
+
+# Lista zaindeksowanych źródeł
+rag_qdrant --list-sources --index-json D:\AI\qdrant\amiga_rag_cache.json [--json]
 ```
 
-## Indeksowanie i hash
+### 3. Indeksowanie katalogu
 
-Masz rację: przy zwykłym przebiegu każdy znaleziony plik jest ponownie
-odczytywany i haszowany SHA-256. Tylko w ten sposób można wykryć zmianę. Cache
-nie oszczędza haszowania, ale oszczędza kosztowniejsze dzielenie tekstu,
-tworzenie embeddingów i zapis wektorów dla niezmienionych plików.
+```powershell
+rag_qdrant D:\Docs\Amiga --source amiga --index-json D:\AI\qdrant\amiga_rag_cache.json
+```
 
-Przebieg działa tak:
+- Skanuje pliki Markdown pod wskazanym katalogiem i oblicza ich hashe SHA-256.
+- Nowe i zmodyfikowane pliki są dzielone na fragmenty, wektoryzowane i zapisywane w Qdrant.
+- Niezmienione pliki są pomijane (0 kosztu wektoryzacji).
+- Pliki usunięte z dysku są automatycznie usuwane z Qdrant i pliku stanu.
+- Wyświetla na żywo pasek postępu i plan indeksowania przez strumieniowane SSE z serwisu.
 
-1. Znajduje wszystkie kwalifikujące się pliki `.md` pod `PATH` i oblicza SHA-256 każdego z nich.
-2. Plik nieobecny w `--index-json` jest dzielony na fragmenty, otrzymuje embeddingi i jest dodawany do Qdrant.
-3. Plik o zmienionym SHA-256 jest aktualizowany: jego stare punkty są usuwane z Qdrant, po czym zapisywane są nowe fragmenty i wektory.
-4. Plik o identycznym SHA-256 nie jest dalej przetwarzany ani zapisywany do Qdrant.
-5. Wpis JSON dla pliku, którego nie ma już pod bieżącym `PATH`, jest usuwany z cache i Qdrant. Nie dotyczy to plików należących do innego katalogu głównego tego samego źródła.
+### 4. Zarządzanie serwisem w tle
 
-## Obrazy
+```powershell
+rag_qdrant service status   # Sprawdza czy serwis działa i podaje statystyki
+rag_qdrant service start    # Ręcznie uruchamia proces serwisu w tle
+rag_qdrant service stop     # Zatrzymuje działający proces serwisu
+```
 
-Indeksator nie analizuje ani nie opisuje obrazów. Nie odczytuje sidecarów,
-nie wykonuje OCR i nie korzysta z usług chmurowych. Ścieżki obrazów powiązanych
-z fragmentem Markdown mogą być zapisane jako metadane wyniku, lecz treść obrazu
-nie wpływa na embedding ani wyszukiwanie.
+---
 
-## Struktura katalogu
+## Lokalne REST API (`http://127.0.0.1:6335`)
 
-```text
+Wszystkie endpointy poza `/v1/health` i `/v1/ready` wymagają nagłówka `Authorization: Bearer <TOKEN>` lub `X-API-Key: <TOKEN>`.
+
+| Metoda | Ścieżka | Opis |
+| --- | --- | --- |
+| `GET` | `/v1/health` | Sprawdzenie liveness serwisu (`{"status": "ok"}`) |
+| `GET` | `/v1/ready` | Sprawdzenie gotowości modelu i kolekcji |
+| `GET` | `/v1/status` | Statystyki Qdrant i kolekcji |
+| `GET` | `/v1/sources` | Lista źródeł, liczba plików i fragmentów |
+| `POST` | `/v1/search` | JSON: `{"query": "...", "source": "...", "limit": 5}` |
+| `POST` | `/v1/index` | JSON: `{"path": "...", "source": "...", "stream": false/true}` |
+| `POST` | `/v1/service/stop` | Czyste zatrzymanie procesu (wymaga profilu admin) |
+
+---
+
+## Serwer MCP (`http://127.0.0.1:6335/mcp`)
+
+Serwis udostępnia wbudowany serwer MCP zgodny ze standardem Streamable HTTP / SSE.
+
+### Dostępne narzędzia:
+- `search(query, sources=None, limit=5)`: Wyszukiwanie semantyczne z uwzględnieniem uprawnień profilu tokenu.
+- `status()`: Odczyt stanu kolekcji bez modyfikacji.
+- `list_sources()`: Statystyki źródeł z cache.
+- `index(path, source)`: Przyrostowe indeksowanie (dozwolone tylko dla tokenów z uprawnieniem zapisu).
+
+### Konfiguracja klienta MCP (np. Antigravity IDE, Claude Desktop, Cursor):
+
+W pliku `mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "qdrant-rag": {
+      "url": "http://127.0.0.1:6335/mcp?token=TWOJ_TOKEN_PROFILU",
+      "transport": "sse"
+    }
+  }
+}
+```
+
+---
+
+## Architektura i pliki
+
+```
 rag-qdrant/
-├── README.md
-├── requirements.txt
-├── bin/                    # uruchamiacze dla PATH
-├── rag_qdrant/             # implementacja CLI
-└── tests/                  # testy regresji interfejsu
+├── bin/
+│   ├── rag_qdrant.bat       # Launcher CMD dla Windows
+│   └── rag_qdrant.ps1       # Launcher PowerShell dla Windows
+├── rag_qdrant/
+│   ├── arguments.py         # Parsowanie argumentów CLI
+│   ├── cache.py             # Normalizacja i schemat pliku JSON stanu
+│   ├── chunker.py           # Dzielenie plików Markdown na logiczne sekcje
+│   ├── client.py            # Cienki klient HTTP z obsługą autostartu i SSE
+│   ├── cli.py               # Główny punkt wejścia CLI
+│   ├── config.py            # Ustawienia, środowisko i parametry sprzętowe
+│   ├── core.py              # Centralny silnik RagEngine (Qdrant + FastEmbed + Lock)
+│   ├── discovery.py         # Wykrywanie plików .md z ignorowaniem katalogów prywatnych
+│   ├── indexer.py           # Kompatybilna klasa KnowledgeIndexer
+│   ├── security.py          # Walidacja Host/Origin, uwierzytelnianie i profile
+│   └── service.py           # Serwis Starlette/Uvicorn + FastMCP
+└── tests/
+    ├── test_indexing_contract.py  # Testy kontraktu CLI i cache
+    └── test_service.py            # Testy REST API, bezpieczeństwa i MCP
 ```

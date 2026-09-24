@@ -3,3 +3,10 @@ amiga_rag_cache.json
 __pycache__/
 *.py[cod]
 devnotes_rag_cache.json
+.env
+.env.*
+.backup/
+*.pid
+rag-qdrant-service-handoff.md
+service_config.local.json
+
