@@ -1,0 +1,10 @@
+#!/bin/sh
+# Enable explicitly with: git config core.hooksPath .githooks
+if command -v python3 >/dev/null 2>&1; then
+    exec python3 tools/harness/preflight.py
+fi
+if command -v python >/dev/null 2>&1; then
+    exec python tools/harness/preflight.py
+fi
+echo 'pre-commit: Python is required for tools/harness/preflight.py' >&2
+exit 1

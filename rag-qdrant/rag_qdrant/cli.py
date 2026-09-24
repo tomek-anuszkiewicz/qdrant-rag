@@ -28,42 +28,40 @@ from .config import (
 )
 
 HELP_TEXT = """
-rag_qdrant — lokalny, przyrostowy indeksator Markdown dla Qdrant
+rag_qdrant - local incremental Markdown indexer for Qdrant
 
-CEL
-  Indeksuje dokumenty Markdown do kolekcji Qdrant `projects_docs` i wykonuje
-  wyszukiwanie semantyczne. Serwis działa jako proces w tle i utrzymuje model
-  w pamięci RAM/VRAM. Plik wskazany przez --index-json przechowuje stan lokalny:
-  hashe plików, liczbę fragmentów i źródła.
+PURPOSE
+  Indexes Markdown documents into the Qdrant `projects_docs` collection and
+  performs semantic search. A persistent background service keeps the model
+  in RAM/VRAM. The file named by --index-json stores local state: file hashes,
+  chunk counts, and sources.
 
-WYMAGANIA
-  - Qdrant musi działać pod http://127.0.0.1:6333.
-  - Serwis uruchamia się automatycznie w tle na żądanie przy pierwszym poleceniu.
-  - --index-json jest wymagany dla każdego polecenia poza --help.
+REQUIREMENTS
+  - Qdrant must be running at http://127.0.0.1:6333.
+  - The service starts automatically on demand for the first command.
+  - --index-json is required for every command except --help.
 
-SKŁADNIA
+USAGE
   rag_qdrant PATH --source NAME --index-json FILE [OPTIONS]
-  rag_qdrant PATH --source NAZWA --index-json PLIK
-  rag_qdrant --status --index-json PLIK [--json]
-  rag_qdrant --list-sources --index-json PLIK [--json]
-  rag_qdrant search ZAPYTANIE --index-json PLIK [--source TAGI] [--limit N] --json
+  rag_qdrant --status --index-json FILE [--json]
+  rag_qdrant --list-sources --index-json FILE [--json]
+  rag_qdrant search QUERY --index-json FILE [--source TAGS] [--limit N] --json
 
+SERVICE MANAGEMENT
+  rag_qdrant service start    Start the background service
+  rag_qdrant service stop     Stop the running service
+  rag_qdrant service status   Check background service status
 
-ZARZĄDZANIE SERWISEM
-  rag_qdrant service start    Uruchamia serwis w tle
-  rag_qdrant service stop     Zatrzymuje działający serwis
-  rag_qdrant service status   Sprawdza stan serwisu w tle
+INDEXING
+  PATH                    Required documentation root directory.
+  -s, --source NAME      Required source tag, such as project-a. Lowercased.
+  --index-json FILE       Required JSON index state file.
 
-INDEKSOWANIE
-  PATH                    Wymagany katalog główny dokumentów.
-  -s, --source NAZWA      Wymagany tag źródła, np. project-a. Normalizowany do małych liter.
-  --index-json PLIK       Wymagany plik JSON stanu indeksu.
-
-WYSZUKIWANIE
-  search ZAPYTANIE        Wymagane zapytanie semantyczne.
-  -s, --source TAGI       Opcjonalny tag lub tagi rozdzielone przecinkami.
-  --limit N               Maksymalna liczba wyników; domyślnie 5, minimum 1.
-  --json                  Wymagany. Zwraca tablicę wyników JSON.
+SEARCH
+  search QUERY            Required semantic query.
+  -s, --source TAGS       Optional comma-separated source tags.
+  --limit N               Maximum result count; default 5, minimum 1.
+  --json                  Required. Returns a JSON array of results.
 """
 
 PLAIN_HELP_TEXT = HELP_TEXT
