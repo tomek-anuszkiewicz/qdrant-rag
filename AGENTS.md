@@ -4,7 +4,7 @@ This repository contains a local Python RAG service and its Qdrant Docker config
 
 ## Boundaries
 
-- Write new repository content in English, including documentation, code comments, and agent files. Reply to the user in their language. See [.agents/rules/repository-language.md](.agents/rules/repository-language.md) for the scoped language rule.
+- Write new repository content and Git commit messages in English, including documentation, code comments, and agent files. Reply to the user in their language. See [.agents/rules/repository-language.md](.agents/rules/repository-language.md) for the scoped language rule.
 - Use portable relative paths in committed documentation and examples. See [.agents/rules/portable-paths.md](.agents/rules/portable-paths.md) for the path boundary.
 - Treat `.env`, `qdrant_storage/`, `*_rag_cache.json`, service logs, and tokens as local state. Do not add their contents to Git, examples, logs, or responses.
 - Keep Qdrant and the RAG service bound to loopback unless the task explicitly changes the network and authentication design. Preserve Host/Origin checks and profile-scoped search/index permissions when editing the service.
