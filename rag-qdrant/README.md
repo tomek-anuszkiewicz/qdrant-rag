@@ -25,6 +25,17 @@ W katalogu `rag-qdrant`:
 pip install -r requirements.txt
 ```
 
+If other local projects need to call the CLI without a full path, **manually** add `D:\AI\qdrant\rag-qdrant\bin` to your Windows user `Path` environment variable (System Settings → Environment Variables → `Path` → Edit → New). Add the `bin` directory, not the launcher file. If the repository is elsewhere, use the path to its `bin` directory instead.
+
+Open a new terminal and verify:
+
+```powershell
+Get-Command rag_qdrant.bat
+rag_qdrant.bat --help
+```
+
+When configuring tools launched by other processes on Windows, use `rag_qdrant.bat`. You can also specify the launcher's full path, in which case no `Path` entry is needed. This setting applies only to the computer running the CLI.
+
 Opcjonalnie dla akceleracji GPU (NVIDIA RTX / CUDA):
 ```powershell
 pip install onnxruntime-gpu nvidia-cublas-cu12
