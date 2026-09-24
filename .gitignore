@@ -1,12 +1,18 @@
+# Persistent local data and index state. Keep these files when cleaning the workspace.
 qdrant_storage/
 amiga_rag_cache.json
-__pycache__/
-*.py[cod]
 devnotes_rag_cache.json
+
+# Local configuration, secrets, and service process state.
 .env
 .env.*
-.backup/
-*.pid
-rag-qdrant-service-handoff.md
 service_config.local.json
+*.pid
 
+# Python bytecode and test caches. Regenerated when code or tests run.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Personal working notes, kept outside Git history.
+/TODO.md

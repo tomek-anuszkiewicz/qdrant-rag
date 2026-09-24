@@ -39,7 +39,7 @@ klient MCP ── Streamable HTTP ┘       │
 
 ## 3. Konfiguracja (`.env`)
 
-Skopiuj `.env.example` do `.env` (plik `.env` jest ignorowany w `.gitignore`):
+Utwórz lokalny plik `.env` (jest ignorowany w `.gitignore`):
 
 ```bash
 # Qdrant Docker
@@ -134,7 +134,7 @@ Wszystkie dotychczasowe polecenia `rag_qdrant.bat` i `rag_qdrant.ps1` działają
 .
 ├── README.md                 # Niniejsza dokumentacja
 ├── docker-compose.yml        # Konfiguracja kontenera Qdrant z izolacją 127.0.0.1
-├── .env.example              # Szablon konfiguracji i sekretów
+├── .env                      # Lokalna konfiguracja i sekrety (ignorowane przez Git)
 ├── amiga_rag_cache.json      # Wspólny plik stanu indeksu
 ├── qdrant_storage/           # Wolumen z danymi Qdrant
 └── rag-qdrant/               # Pakiet kodu serwisu i CLI
