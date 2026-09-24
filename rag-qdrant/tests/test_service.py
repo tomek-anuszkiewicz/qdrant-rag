@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from starlette.testclient import TestClient
 
-from rag_qdrant.config import ADMIN_TOKEN, AMIGA_TOKEN, DEVNOTES_TOKEN
+from rag_qdrant.config import ADMIN_TOKEN
 from rag_qdrant.core import ConcurrencyError, RagEngine
 from rag_qdrant.security import (
     ClientProfile,
@@ -47,6 +47,51 @@ class SecurityValidationTests(unittest.TestCase):
 
         self.assertIsNone(get_profile_by_token("invalid-secret-token"))
 
+    def test_unconfigured_default_token_is_rejected(self):
+        with patch("rag_qdrant.security.ADMIN_TOKEN", ""), patch(
+            "rag_qdrant.security.CLIENT_PROFILES_JSON", ""
+        ):
+            self.assertIsNone(get_profile_by_token("local-dev-token"))
+
+    def test_client_profiles_are_read_only(self):
+        profile_list = [{
+            "name": "reader", "token": "reader-token",
+            "allowed_search_sources": ["project-a"],
+        }]
+        with patch("rag_qdrant.security.CLIENT_PROFILES_JSON", json.dumps(profile_list)):
+            profile = get_profile_by_token("reader-token")
+            self.assertEqual(profile.name, "reader")
+            self.assertEqual(profile.allowed_search_sources, ["project-a"])
+            self.assertFalse(profile.can_write)
+            self.assertIsNone(get_profile_by_token("unknown-token"))
+
+    def test_client_list_rejects_write_settings(self):
+        profile_list = [{
+            "name": "reader", "token": "reader-token",
+            "allowed_search_sources": ["project-a"], "can_write": True,
+        }]
+        with patch("rag_qdrant.security.CLIENT_PROFILES_JSON", json.dumps(profile_list)):
+            with self.assertRaisesRegex(ValueError, "only name"):
+                get_profile_by_token("reader-token")
+
+    def test_duplicate_admin_token_is_rejected(self):
+        profile_list = [{
+            "name": "other", "token": ADMIN_TOKEN,
+            "allowed_search_sources": [],
+        }]
+        with patch("rag_qdrant.security.CLIENT_PROFILES_JSON", json.dumps(profile_list)):
+            with self.assertRaisesRegex(ValueError, "unique"):
+                get_profile_by_token(ADMIN_TOKEN)
+
+    def test_client_list_cannot_define_admin(self):
+        profile_list = [{
+            "name": "admin", "token": "different-token",
+            "allowed_search_sources": [],
+        }]
+        with patch("rag_qdrant.security.CLIENT_PROFILES_JSON", json.dumps(profile_list)):
+            with self.assertRaisesRegex(ValueError, "cannot be admin"):
+                get_profile_by_token("different-token")
+
     def test_search_sources_scoping(self):
         # Admin can search all
         admin = ClientProfile(name="admin", token="t1", can_read=True, allowed_search_sources=["*"])
@@ -54,25 +99,22 @@ class SecurityValidationTests(unittest.TestCase):
         self.assertIsNone(sources)
         self.assertIsNone(err)
 
-        # Amiga profile restricted to amiga and devnotes
-        amiga = ClientProfile(name="amiga", token="t2", can_read=True, allowed_search_sources=["amiga", "devnotes"])
-        sources, err = validate_search_sources(None, amiga)
-        self.assertEqual(sources, ["amiga", "devnotes"])
+        scoped = ClientProfile(name="reader", token="t2", can_read=True, allowed_search_sources=["project-a", "project-b"])
+        sources, err = validate_search_sources(None, scoped)
+        self.assertEqual(sources, ["project-a", "project-b"])
         self.assertIsNone(err)
 
-        # Requesting allowed source
-        sources, err = validate_search_sources(["amiga"], amiga)
-        self.assertEqual(sources, ["amiga"])
+        sources, err = validate_search_sources(["project-a"], scoped)
+        self.assertEqual(sources, ["project-a"])
         self.assertIsNone(err)
 
-        # Requesting forbidden source
-        sources, err = validate_search_sources(["secret_docs"], amiga)
+        sources, err = validate_search_sources(["secret_docs"], scoped)
         self.assertIsNone(sources)
         self.assertIn("Source 'secret_docs' is not permitted", err)
 
     def test_index_authorization(self):
         read_only = ClientProfile(name="reader", token="t3", can_read=True, can_write=False)
-        allowed, err = validate_index_authorization(Path.cwd(), "amiga", read_only)
+        allowed, err = validate_index_authorization(Path.cwd(), "project-a", read_only)
         self.assertFalse(allowed)
         self.assertIn("read-only access", err)
 
@@ -81,10 +123,10 @@ class SecurityValidationTests(unittest.TestCase):
             token="t4",
             can_read=True,
             can_write=True,
-            allowed_index_sources=["amiga"],
+            allowed_index_sources=["project-a"],
             allowed_index_directories=[str(Path.cwd())],
         )
-        allowed, err = validate_index_authorization(Path.cwd(), "amiga", scoped_writer)
+        allowed, err = validate_index_authorization(Path.cwd(), "project-a", scoped_writer)
         self.assertTrue(allowed)
         self.assertIsNone(err)
 
@@ -157,6 +199,13 @@ class ServiceApiTests(unittest.TestCase):
             json={"limit": 2},
         )
         self.assertEqual(resp.status_code, 400)
+
+    def test_same_index_filename_in_other_directory_is_rejected(self):
+        from rag_qdrant.service import _check_index_json_compatibility, get_engine
+
+        engine = get_engine()
+        other = engine.index_json.parent / "other" / engine.index_json.name
+        self.assertIsNotNone(_check_index_json_compatibility(engine, str(other)))
 
     def test_incompatible_index_json_rejected(self):
         resp = self.client.get(

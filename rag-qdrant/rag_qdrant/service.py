@@ -22,9 +22,7 @@ from starlette.routing import Route
 
 from .config import (
     ADMIN_TOKEN,
-    AMIGA_TOKEN,
     COLLECTION_NAME,
-    DEVNOTES_TOKEN,
     MAX_REQUEST_BODY_BYTES,
     MAX_SEARCH_LIMIT,
     SCORE_THRESHOLD,
@@ -66,7 +64,7 @@ def _get_request_profile() -> Optional[ClientProfile]:
     except Exception:
         pass
     # Default to admin profile if running locally without HTTP request context
-    return get_profile_by_token(ADMIN_TOKEN) or get_profile_by_token("local-dev-token")
+    return get_profile_by_token(ADMIN_TOKEN)
 
 
 @mcp.tool()
@@ -79,7 +77,7 @@ def search(
 
     Args:
         query: The semantic search query text.
-        sources: Optional comma-separated source tag(s) to filter by (e.g. 'amiga,devnotes').
+        sources: Optional comma-separated source tag(s) to filter by (e.g. 'project-a,project-b').
         limit: Maximum number of results to return (1-50, default 5).
     """
     engine = get_engine()
@@ -209,9 +207,7 @@ def _check_index_json_compatibility(engine: RagEngine, requested_path: Optional[
     req = Path(requested_path).expanduser().resolve()
     canonical = engine.index_json.resolve()
 
-    # Match exact path, or match known shared workspace caches
-    allowed_names = {canonical.name, "amiga_rag_cache.json", "devnotes_rag_cache.json"}
-    if req == canonical or req.name in allowed_names:
+    if req == canonical:
         return None
 
     return (

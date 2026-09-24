@@ -13,7 +13,7 @@ Since version 2.0, the architecture uses **one persistent background process** t
 - **Autostart on demand**: If the background service is not running, the CLI starts it, waits until it is ready, and then sends the request.
 - **Two interfaces**: Local REST API and an MCP server (Streamable HTTP / SSE) on the shared `127.0.0.1:6335` port.
 - **Security**: The service and Qdrant listen only on loopback (`127.0.0.1`), validate `Host` and `Origin` headers against DNS rebinding, and require a token for data access.
-- **Permission profiles**: Client profiles (`admin`, `amiga`, `devnotes`) limit visible and indexable sources and directories.
+- **Permission profiles**: Locally configured client profiles limit visible and indexable sources and directories.
 
 ---
 
@@ -55,11 +55,12 @@ RAG_SERVICE_HOST=127.0.0.1
 RAG_SERVICE_PORT=6335
 
 RAG_ADMIN_TOKEN=random-admin-token
-RAG_AMIGA_TOKEN=random-amiga-profile-token
-RAG_DEVNOTES_TOKEN=random-devnotes-profile-token
+RAG_CLIENT_PROFILES_JSON=[{"name":"project-reader","token":"random-reader-token","allowed_search_sources":["project-a"]}]
 
-RAG_CANONICAL_INDEX_JSON=d:\AI\qdrant\amiga_rag_cache.json
+RAG_CANONICAL_INDEX_JSON=../rag_index.json
 ```
+
+`RAG_CLIENT_PROFILES_JSON` is an array in the ignored local .env file. Each profile has only name, token, and allowed_search_sources. These profiles are read-only. Add clients and choose their search sources locally. RAG_ADMIN_TOKEN is the separate CLI credential for indexing and service administration. The service resolves the canonical index path from the package directory; use the same file for each CLI command.
 
 ---
 
@@ -70,13 +71,13 @@ Run the CLI through `bin\rag_qdrant.ps1` or `bin\rag_qdrant.bat`, or as a Python
 ### 1. Semantic search
 
 ```powershell
-rag_qdrant search "DMA arbitration" --source amiga --limit 5 --index-json D:\AI\qdrant\amiga_rag_cache.json --json
+rag_qdrant search "example query" --source project-a --limit 5 --index-json ..\rag_index.json --json
 ```
 
 | Parameter | Description |
 | --- | --- |
 | `QUERY` | Natural-language query text |
-| `-s TAGS`, `--source TAGS` | Optional source tag or comma-separated tags (for example, `amiga,devnotes`) |
+| `-s TAGS`, `--source TAGS` | Optional source tag or comma-separated tags (for example, `project-a,project-b`) |
 | `--limit N` | Maximum result count (default 5, minimum 1, maximum 50) |
 | `--index-json FILE` | Required JSON index state file |
 | `--json` | Required. Returns an array of objects with `score`, `source`, `file_path`, `relative_path`, `header`, `content`, and `images` fields. |
@@ -85,16 +86,16 @@ rag_qdrant search "DMA arbitration" --source amiga --limit 5 --index-json D:\AI\
 
 ```powershell
 # Database and collection status
-rag_qdrant --status --index-json D:\AI\qdrant\amiga_rag_cache.json [--json]
+rag_qdrant --status --index-json ..\rag_index.json [--json]
 
 # List indexed sources
-rag_qdrant --list-sources --index-json D:\AI\qdrant\amiga_rag_cache.json [--json]
+rag_qdrant --list-sources --index-json ..\rag_index.json [--json]
 ```
 
 ### 3. Indexing a directory
 
 ```powershell
-rag_qdrant D:\Docs\Amiga --source amiga --index-json D:\AI\qdrant\amiga_rag_cache.json
+rag_qdrant .\docs --source project-a --index-json ..\rag_index.json
 ```
 
 - Scans Markdown files under the selected directory and calculates SHA-256 hashes.

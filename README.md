@@ -33,7 +33,7 @@ MCP client ── Streamable HTTP ┘       │
    - Requests without the key to `http://127.0.0.1:6333/collections` return HTTP 401 Unauthorized.
 3. **RAG service authentication**:
    - All data endpoints (REST and `/mcp`) require an authorization token (`Authorization: Bearer <TOKEN>` or `?token=<TOKEN>`).
-   - Client profiles (`admin`, `amiga`, `devnotes`) define permitted search sources, indexing sources, and directories.
+   - An admin token and locally configured client profiles define permitted search sources, indexing sources, and directories.
 4. **DNS rebinding protection**:
    - The service validates the `Host` and `Origin` headers. Requests with foreign values, such as browser-based attack attempts, return HTTP 403 Forbidden.
 
@@ -54,12 +54,13 @@ RAG_SERVICE_PORT=6335
 
 # Authentication tokens
 RAG_ADMIN_TOKEN=random-token-for-cli-and-admin
-RAG_AMIGA_TOKEN=random-token-for-amiga-profile
-RAG_DEVNOTES_TOKEN=random-token-for-devnotes-profile
+RAG_CLIENT_PROFILES_JSON=[{"name":"project-reader","token":"random-reader-token","allowed_search_sources":["project-a"]}]
 
 # Shared local collection state
-RAG_CANONICAL_INDEX_JSON=d:\AI\qdrant\amiga_rag_cache.json
+RAG_CANONICAL_INDEX_JSON=../rag_index.json
 ```
+
+Add one object per client to `RAG_CLIENT_PROFILES_JSON`. Each object has only a unique name, token, and allowed_search_sources list. Client profiles can search but cannot index or stop the service. The list and tokens stay in the ignored local .env file. Use a wildcard source only when that client should search every source. RAG_ADMIN_TOKEN is the separate local CLI credential for indexing and service administration.
 
 ---
 
@@ -136,8 +137,8 @@ For existing MCP adapters that launch the CLI: Existing `rag_qdrant.bat` and `ra
 ├── README.md                 # This documentation
 ├── docker-compose.yml        # Qdrant container configuration, bound to 127.0.0.1
 ├── .env                      # Local configuration and secrets (ignored by Git)
-├── amiga_rag_cache.json      # Shared index state file
-├── qdrant_storage/           # Qdrant data volume
+├── rag_index.json            # Shared index state file
+├── qdrant_storage/           # Persistent bind-mounted Qdrant data
 └── rag-qdrant/               # Service and CLI package
     ├── bin/                  # rag_qdrant.bat and rag_qdrant.ps1 launchers
     ├── rag_qdrant/           # core, service, client, cli, security implementation

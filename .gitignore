@@ -1,7 +1,7 @@
 # Persistent local data and index state. Keep these files when cleaning the workspace.
 qdrant_storage/
-amiga_rag_cache.json
-devnotes_rag_cache.json
+*_rag_cache.json
+rag_index.json
 
 # Local configuration, secrets, and service process state.
 .env

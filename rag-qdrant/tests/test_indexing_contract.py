@@ -4,22 +4,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-SERVER_ROOT = PACKAGE_ROOT.parent / "amiga-rag-mcp-server"
 sys.path.insert(0, str(PACKAGE_ROOT))
-sys.path.insert(0, str(SERVER_ROOT))
 
 from rag_qdrant.arguments import create_parser, create_search_parser, validate_indexing_arguments
 from rag_qdrant.cache import normalize_cache
 from rag_qdrant.discovery import discover_markdown_files
-
-try:
-    from rag_qdrant_command import run_rag_qdrant_json
-except ImportError:
-    run_rag_qdrant_json = None
 
 
 
@@ -28,23 +20,23 @@ class CliContractTests(unittest.TestCase):
         parser = create_parser()
 
         _, unknown = parser.parse_known_args(
-            [".", "--source", "amiga", "--exclude", "private", "--no-root-notes", "--reindex"]
+            [".", "--source", "project-a", "--exclude", "private", "--no-root-notes", "--reindex"]
         )
 
         self.assertEqual(unknown, ["--exclude", "private", "--no-root-notes", "--reindex"])
 
     def test_index_json_is_required_for_indexing(self):
         args = create_parser().parse_args(
-            [".", "--source", "amiga", "--index-json", "rag-index.json"]
+            [".", "--source", "project-a", "--index-json", "rag-index.json"]
         )
 
         self.assertEqual(args.path, ".")
-        self.assertEqual(args.source, "amiga")
+        self.assertEqual(args.source, "project-a")
         self.assertEqual(args.index_json, "rag-index.json")
         self.assertIsNone(validate_indexing_arguments(args))
 
     def test_indexing_without_index_json_is_rejected(self):
-        args = create_parser().parse_args([".", "--source", "amiga"])
+        args = create_parser().parse_args([".", "--source", "project-a"])
 
         self.assertEqual(
             validate_indexing_arguments(args),
@@ -85,26 +77,23 @@ class DiscoveryContractTests(unittest.TestCase):
 
 
 class LauncherContractTests(unittest.TestCase):
-    def test_rag_qdrant_launchers_replace_the_legacy_names(self):
+    def test_rag_qdrant_launchers_exist(self):
         launchers_dir = PACKAGE_ROOT / "bin"
 
         self.assertTrue((launchers_dir / "rag_qdrant.ps1").is_file())
         self.assertTrue((launchers_dir / "rag_qdrant.bat").is_file())
-        self.assertFalse((launchers_dir / "amiga_rag.ps1").exists())
-        self.assertFalse((launchers_dir / "amiga_rag.bat").exists())
 
     def test_cli_help_uses_the_rag_qdrant_command_name(self):
         cli_source = (PACKAGE_ROOT / "rag_qdrant" / "cli.py").read_text(encoding="utf-8")
 
         self.assertIn("rag_qdrant PATH --source NAME --index-json FILE [OPTIONS]", cli_source)
-        self.assertNotIn("amiga_rag [PATH] --source NAME [OPTIONS]", cli_source)
 
 
 class CacheContractTests(unittest.TestCase):
     def test_collection_change_clears_file_hashes_and_drops_legacy_image_descriptions(self):
         cache, requires_flush = normalize_cache(
             {
-                "sources": {"amiga": {"C:/docs/note.md": {"hash": "old"}}},
+                "sources": {"project-a": {"C:/docs/note.md": {"hash": "old"}}},
                 "image_descriptions": {"C:/docs/diagram.png": "Timing diagram"},
             },
             "projects_docs",
@@ -129,57 +118,13 @@ class CacheContractTests(unittest.TestCase):
 
 
 class CommandContractTests(unittest.TestCase):
-    def test_server_and_cli_have_separate_tool_roots(self):
-        if not SERVER_ROOT.is_dir():
-            self.skipTest("amiga-rag-mcp-server not in workspace")
-        tools_root = PACKAGE_ROOT.parent
-
-        self.assertTrue((tools_root / "rag-qdrant" / "README.md").is_file())
-        self.assertTrue((SERVER_ROOT / "README.md").is_file())
-        self.assertTrue((SERVER_ROOT / "amiga_rag_mcp_server.py").is_file())
-        self.assertFalse((tools_root / "rag").exists())
-
     def test_search_command_accepts_machine_readable_source_filter(self):
         args = create_search_parser().parse_args(
-            ["Copper timing", "--source", "amiga,obsidian", "--index-json", "rag-index.json", "--limit", "3", "--json"]
+            ["Copper timing", "--source", "project-a,project-b", "--index-json", "rag-index.json", "--limit", "3", "--json"]
         )
 
         self.assertEqual(args.query, "Copper timing")
-        self.assertEqual(args.source, "amiga,obsidian")
+        self.assertEqual(args.source, "project-a,project-b")
         self.assertEqual(args.index_json, "rag-index.json")
         self.assertEqual(args.limit, 3)
         self.assertTrue(args.json)
-
-    def test_path_command_runner_decodes_json_response(self):
-        if run_rag_qdrant_json is None:
-            self.skipTest("rag_qdrant_command not in workspace")
-        calls = []
-
-        def runner(command, **kwargs):
-            calls.append((command, kwargs))
-            return SimpleNamespace(returncode=0, stdout='[{"source": "amiga"}]', stderr="")
-
-        result = run_rag_qdrant_json(
-            ["search", "Copper timing", "--index-json", "rag-index.json", "--json"], runner=runner
-        )
-
-        self.assertEqual(result, [{"source": "amiga"}])
-        self.assertEqual(
-            calls[0][0],
-            ["rag_qdrant", "search", "Copper timing", "--index-json", "rag-index.json", "--json"],
-        )
-        self.assertTrue(calls[0][1]["capture_output"])
-
-    def test_mcp_server_uses_path_command_and_renamed_entrypoint(self):
-        if not SERVER_ROOT.is_dir():
-            self.skipTest("amiga-rag-mcp-server not in workspace")
-        server_source = (SERVER_ROOT / "amiga_rag_mcp_server.py").read_text(encoding="utf-8")
-        config_source = (PACKAGE_ROOT.parents[1] / ".agents" / "mcp_config.json").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("run_rag_qdrant_json", server_source)
-        self.assertNotIn("KnowledgeIndexer", server_source)
-        self.assertIn("tools/amiga-rag-mcp-server/amiga_rag_mcp_server.py", config_source)
-        self.assertFalse((SERVER_ROOT / "amiga_mcp_server.py").exists())
-

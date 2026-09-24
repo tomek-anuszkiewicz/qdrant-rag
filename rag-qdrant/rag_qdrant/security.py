@@ -1,12 +1,12 @@
 """Security, authentication, and client profile authorization."""
 
-import os
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
-from .config import ADMIN_TOKEN, AMIGA_TOKEN, DEVNOTES_TOKEN
+from .config import ADMIN_TOKEN, CLIENT_PROFILES_JSON
 
 
 @dataclass
@@ -37,31 +37,37 @@ def _load_profiles() -> Dict[str, ClientProfile]:
             allowed_index_directories=["*"],
         )
 
-    # 2. Amiga profile
-    amiga_token = AMIGA_TOKEN.strip()
-    if amiga_token:
-        profiles[amiga_token] = ClientProfile(
-            name="amiga",
-            token=amiga_token,
-            can_read=True,
-            can_write=True,
-            allowed_search_sources=["amiga", "devnotes"],
-            allowed_index_sources=["amiga"],
-            allowed_index_directories=["*"],  # or specific paths if restricted
-        )
-
-    # 3. Devnotes profile
-    devnotes_token = DEVNOTES_TOKEN.strip()
-    if devnotes_token:
-        profiles[devnotes_token] = ClientProfile(
-            name="devnotes",
-            token=devnotes_token,
-            can_read=True,
-            can_write=True,
-            allowed_search_sources=["devnotes"],
-            allowed_index_sources=["devnotes"],
-            allowed_index_directories=["*"],
-        )
+    # Client profiles are configured locally, without project-specific code.
+    if CLIENT_PROFILES_JSON.strip():
+        entries = json.loads(CLIENT_PROFILES_JSON)
+        if not isinstance(entries, list):
+            raise ValueError("RAG_CLIENT_PROFILES_JSON must be a JSON array")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError("Each client profile must be a JSON object")
+            required = {"name", "token", "allowed_search_sources"}
+            if set(entry) != required:
+                raise ValueError("Client profile must contain only name, token, and allowed_search_sources")
+            name, token = entry["name"], entry["token"]
+            if not isinstance(name, str) or not name.strip() or name.strip().lower() == "admin":
+                raise ValueError("Client profile name must be nonempty and cannot be admin")
+            if not isinstance(token, str) or not token.strip():
+                raise ValueError("Client profile token must be nonempty")
+            token = token.strip()
+            if token in profiles:
+                raise ValueError("Client profile tokens must be unique")
+            values = entry["allowed_search_sources"]
+            if not isinstance(values, list) or not all(
+                isinstance(value, str) and value.strip() for value in values
+            ):
+                raise ValueError("allowed_search_sources must be a list of nonempty strings")
+            profiles[token] = ClientProfile(
+                name=name.strip(),
+                token=token,
+                can_read=True,
+                can_write=False,
+                allowed_search_sources=entry["allowed_search_sources"],
+            )
 
     return profiles
 
@@ -108,18 +114,6 @@ def get_profile_by_token(token: Optional[str]) -> Optional[ClientProfile]:
 
     if token in profiles:
         return profiles[token]
-
-    # If no tokens were configured at all in the environment, fallback to a local default profile
-    if not profiles and token in ("local-dev-token", "default"):
-        return ClientProfile(
-            name="local-default",
-            token=token,
-            can_read=True,
-            can_write=True,
-            allowed_search_sources=["*"],
-            allowed_index_sources=["*"],
-            allowed_index_directories=["*"],
-        )
 
     return None
 

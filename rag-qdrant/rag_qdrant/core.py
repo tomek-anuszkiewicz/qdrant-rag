@@ -110,7 +110,7 @@ class RagEngine:
         else:
             # Default fallback to workspace root shared state
             workspace_root = Path(__file__).resolve().parents[2]
-            self.index_json = (workspace_root / "amiga_rag_cache.json").resolve()
+            self.index_json = (workspace_root / "rag_index.json").resolve()
 
         self.cache, self.dirty_cache = self._load_cache()
         self.host_gpu = self.detect_host_gpu()

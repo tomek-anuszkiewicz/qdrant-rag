@@ -71,8 +71,7 @@ SERVICE_LOG_FILE = os.environ.get(
 
 # Authentication & Profiles
 ADMIN_TOKEN = os.environ.get("RAG_ADMIN_TOKEN", "")
-AMIGA_TOKEN = os.environ.get("RAG_AMIGA_TOKEN", "")
-DEVNOTES_TOKEN = os.environ.get("RAG_DEVNOTES_TOKEN", "")
+CLIENT_PROFILES_JSON = os.environ.get("RAG_CLIENT_PROFILES_JSON", "")
 
 # Limits
 MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024  # 16 MB

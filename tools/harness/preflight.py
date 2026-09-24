@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "rag-qdrant"
 FORBIDDEN_TRACKED = re.compile(
-    r"(^|/)(?:\.env(?:\..*)?|qdrant_storage|[^/]*_rag_cache\.json|[^/]*\.pid|[^/]*\.log)(?:/|$)",
+    r"(^|/)(?:\.env(?:\..*)?|qdrant_storage|[^/]*_rag_cache\.json|rag_index\.json|[^/]*\.pid|[^/]*\.log)(?:/|$)",
     re.IGNORECASE,
 )
 PORT = re.compile(r'^\s*-\s*["\']?([^\s"\']+:[0-9]+:[0-9]+)["\']?\s*$')

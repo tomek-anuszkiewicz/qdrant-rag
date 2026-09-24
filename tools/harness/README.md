@@ -23,4 +23,4 @@ This setting affects only this checkout. Git for Windows executes the tracked sh
 
 ## Design choices
 
-The language and path boundaries adapt devnotes' `notes-language`, `no-absolute-paths`, `check-polish`, and `check-paths` to a code repository. The indexing and service skills adapt Amiga's focused regression and review procedures to this package. The documentation parity skill is an on-demand review, not a mandatory whole-repository gate. No live RAG operation, specialist agent, or Codex lifecycle hook is required for normal code changes.
+The language and path rules keep committed content portable and consistent. The indexing and service skills provide focused checks for behavior changes. The documentation parity skill is an on-demand review, not a mandatory whole-repository gate. No live RAG operation, specialist agent, or Codex lifecycle hook is required for normal code changes.

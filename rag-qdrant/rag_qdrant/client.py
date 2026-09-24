@@ -41,7 +41,7 @@ class RagServiceClient:
         timeout: float = 60.0,
     ):
         self.base_url = base_url.rstrip("/")
-        self.token = token or ADMIN_TOKEN or "local-dev-token"
+        self.token = token or ADMIN_TOKEN
         self.timeout = timeout
 
     def _headers(self) -> Dict[str, str]:
