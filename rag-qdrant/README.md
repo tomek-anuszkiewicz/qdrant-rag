@@ -98,7 +98,7 @@ rag_qdrant --list-sources --index-json ..\rag_index.json [--json]
 rag_qdrant .\docs --source project-a --index-json ..\rag_index.json
 ```
 
-- Scans Markdown files under the selected directory and calculates SHA-256 hashes.
+- Scans Markdown files under the selected directory, including paths named `Private`; built-in system and tool directories are skipped. Select the indexing root and source deliberately.
 - Splits new and changed files into chunks, embeds them, and writes vectors to Qdrant.
 - Skips unchanged files without embedding them again.
 - Removes deleted files from Qdrant and the JSON state file.
@@ -171,7 +171,7 @@ rag-qdrant/
 │   ├── cli.py               # CLI entry point
 │   ├── config.py            # Settings, environment, and hardware parameters
 │   ├── core.py              # Central RagEngine (Qdrant + FastEmbed + lock)
-│   ├── discovery.py         # Markdown discovery with private-directory exclusions
+│   ├── discovery.py         # Markdown discovery with system-directory exclusions
 │   ├── indexer.py           # Compatibility KnowledgeIndexer class
 │   ├── security.py          # Host/Origin validation, authentication, and profiles
 │   └── service.py           # Starlette/Uvicorn service and FastMCP

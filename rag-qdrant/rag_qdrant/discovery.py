@@ -19,12 +19,10 @@ BASE_IGNORED_PARTS = {
 
 
 def _is_ignored(path: Path) -> bool:
-    """Return whether a path is excluded by built-in system or privacy rules."""
+    """Return whether a path is excluded by built-in system-directory rules."""
     for part in path.parts:
         part_lower = part.lower()
         if part_lower in BASE_IGNORED_PARTS:
-            return True
-        if part_lower == "_private" or "private" in part_lower:
             return True
     return False
 

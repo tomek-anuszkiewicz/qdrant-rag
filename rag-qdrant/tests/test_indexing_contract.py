@@ -67,12 +67,26 @@ class DiscoveryContractTests(unittest.TestCase):
             (root / "02 Other").mkdir()
             other_note = root / "02 Other" / "other.md"
             other_note.write_text("# Other\n", encoding="utf-8")
-            (root / "_Private").mkdir()
-            (root / "_Private" / "secret.md").write_text("# Secret\n", encoding="utf-8")
+            (root / "Private Notes").mkdir()
+            private_note = root / "Private Notes" / "note.md"
+            private_note.write_text("# Note\n", encoding="utf-8")
+            (root / ".git").mkdir()
+            (root / ".git" / "ignored.md").write_text("# Ignored\n", encoding="utf-8")
 
             files = discover_markdown_files(root)
 
-        self.assertEqual(sorted(files), sorted([root_note, selected_note, other_note]))
+        self.assertEqual(sorted(files), sorted([root_note, selected_note, other_note, private_note]))
+
+    def test_explicit_private_root_is_discovered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "Private"
+            root.mkdir()
+            note = root / "note.md"
+            note.write_text("# Note\n", encoding="utf-8")
+
+            files = discover_markdown_files(root)
+
+        self.assertEqual(files, [note])
 
 
 
